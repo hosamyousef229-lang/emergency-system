@@ -1,24 +1,42 @@
 const express = require('express');
 const mqtt = require('mqtt');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
-// الاتصال بوسيط MQTT العام
-const client = mqtt.connect('mqtt://broker.hivemq.com');
+// السماح بقراءة النص الخام (Text) القادم من Postman
+app.use(express.text()); 
 
-client.on('connect', () => {
-  console.log('Connected to MQTT Broker!');
+// الاتصال بسيرفر MQTT
+const mqttClient = mqtt.connect('mqtt://broker.hivemq.com');
+
+mqttClient.on('connect', () => {
+    console.log('Connected to HiveMQ Broker successfully!');
 });
 
-app.use(express.json());
-
-// نقطة اتصال لاستقبال الأمر من تطبيقك
+// المسار الذي يستقبل الطلبات
 app.post('/trigger-alarm', (req, res) => {
-  const { stationId, action } = req.body;
-  client.publish(`emergency/${stationId}`, action);
-  res.send(`Command ${action} sent to station ${stationId}`);
+    const stationNumber = req.body.trim(); 
+
+    console.log(`Received command for station: ${stationNumber}`);
+
+    if (!stationNumber || isNaN(stationNumber)) {
+        return res.status(400).send("Error: Please send a valid number.");
+    }
+
+    const topic = 'emergency/alert'; 
+
+    // إرسال الرقم للـ ESP32
+    mqttClient.publish(topic, stationNumber, (err) => {
+        if (err) {
+            console.error('MQTT error:', err);
+            return res.status(500).send("Server Error.");
+        }
+        
+        res.status(200).send(`Success: Command sent to station ${stationNumber}`);
+    });
 });
 
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+    console.log(`Server running on port ${port}`);
 });
