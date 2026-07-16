@@ -4,8 +4,8 @@ const mqtt = require('mqtt');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// قراءة النصوص الخام (Text) القادمة من Postman
-app.use(express.text()); 
+// هذا السطر يضمن قراءة النص القادم من Postman كـ Text مهما كان نوع الـ Content-Type المختار
+app.use(express.text({ type: '*/*' })); 
 
 // الاتصال بسيرفر MQTT
 const mqttClient = mqtt.connect('mqtt://broker.hivemq.com');
@@ -14,30 +14,29 @@ mqttClient.on('connect', () => {
     console.log('Connected to HiveMQ Broker successfully!');
 });
 
-// المسار الثابت الذي يستقبل الطلبات
+// المسار الثابت لاستقبال الطلب
 app.post('/trigger-alarm', (req, res) => {
-    // استقبال المسار الكامل من الـ Body (مثال: dev/emergency/255)
+    // استقبال المسار الكامل من الـ Body (مثل: dev/emergency/255)
     const topic = req.body ? req.body.trim() : ''; 
 
-    console.log(`Received topic to publish to: "${topic}"`);
+    console.log(`Target Topic received: "${topic}"`);
 
-    // التحقق من أن النص المرسل ليس فارغاً
+    // التحقق من أن النص ليس فارغاً
     if (!topic) {
         return res.status(400).send("Error: Please send a valid topic in the request body.");
     }
 
-    // الرسالة التي تريد إرسالها إلى الـ ESP32 عبر هذا الـ Topic
-    // يمكنك تعديل هذه الرسالة أو جعلها ديناميكية لاحقاً
-    const payload = "ACTIVATE_ALARM"; 
+    // القيمة أو الرسالة التي ستصل للـ ESP32 لتشغيل الجرس/الإنذار
+    const payload = "1"; // يمكنك تغييرها إلى "ON" أو "ACTIVATE" حسب برمجة الـ ESP32 لديك
 
-    // إرسال الرسالة إلى الـ Topic المستلم
+    // إرسال الإشارة إلى المسار المطلوب
     mqttClient.publish(topic, payload, (err) => {
         if (err) {
             console.error('MQTT error:', err);
             return res.status(500).send("Server Error.");
         }
         
-        res.status(200).send(`Success: Command sent to topic [${topic}]`);
+        res.status(200).send(`Success: Trigger signal sent to topic [${topic}]`);
     });
 });
 
