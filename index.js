@@ -4,8 +4,7 @@ const mqtt = require('mqtt');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// دعم قراءة البيانات بصيغة JSON والصيغة النصية الخام (Text)
-app.use(express.json()); 
+// قراءة النصوص الخام (Text) القادمة من Postman
 app.use(express.text()); 
 
 // الاتصال بسيرفر MQTT
@@ -15,39 +14,30 @@ mqttClient.on('connect', () => {
     console.log('Connected to HiveMQ Broker successfully!');
 });
 
-/**
- * المسار الجديد يستقبل الـ Topic كجزء من الرابط
- * رمز (*) يسمح باستقبال مسار كامل يحتوي على علامات "/" مثل: dev/emergency/225
- */
-app.post('/trigger-alarm/:topic(*)', (req, res) => {
-    const topic = req.params.topic; // سيحتوي على dev/emergency/225
-    let payload;
+// المسار الثابت الذي يستقبل الطلبات
+app.post('/trigger-alarm', (req, res) => {
+    // استقبال المسار الكامل من الـ Body (مثال: dev/emergency/255)
+    const topic = req.body ? req.body.trim() : ''; 
 
-    // تحضير البيانات المرسلة (Payload)
-    if (typeof req.body === 'object') {
-        payload = JSON.stringify(req.body); 
-    } else {
-        payload = req.body ? req.body.trim() : '';
-    }
+    console.log(`Received topic to publish to: "${topic}"`);
 
-    console.log(`Sending to Topic: [${topic}] | Message: ${payload}`);
-
-    // التحقق من وجود الـ Topic والبيانات
+    // التحقق من أن النص المرسل ليس فارغاً
     if (!topic) {
-        return res.status(400).send("Error: Topic is required in the URL.");
-    }
-    if (!payload) {
-        return res.status(400).send("Error: Request body cannot be empty.");
+        return res.status(400).send("Error: Please send a valid topic in the request body.");
     }
 
-    // إرسال الرسالة إلى الـ Topic الديناميكي المستخرج من الرابط
+    // الرسالة التي تريد إرسالها إلى الـ ESP32 عبر هذا الـ Topic
+    // يمكنك تعديل هذه الرسالة أو جعلها ديناميكية لاحقاً
+    const payload = "ACTIVATE_ALARM"; 
+
+    // إرسال الرسالة إلى الـ Topic المستلم
     mqttClient.publish(topic, payload, (err) => {
         if (err) {
             console.error('MQTT error:', err);
             return res.status(500).send("Server Error.");
         }
         
-        res.status(200).send(`Success: Sent message to topic [${topic}]`);
+        res.status(200).send(`Success: Command sent to topic [${topic}]`);
     });
 });
 
