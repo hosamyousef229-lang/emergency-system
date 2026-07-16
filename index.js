@@ -1,50 +1,46 @@
 const express = require('express');
-const { WebSocketServer } = require('ws');
-
+const mqtt = require('mqtt'); // تأكد من استيراد مكتبة MQTT
 const app = express();
-const port = process.env.PORT || 3000;
 
-// إنشاء خادم HTTP
-const server = app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+app.use(express.json());
+// لدعم قراءة النصوص العادية إذا كنت ترسل العنوان فقط من بوستمان
+app.use(express.text({ type: '*/*' })); 
+
+// إعداد الاتصال بـ MQTT Broker (مثل HiveMQ أو Shiftr.io أو Mosquitto)
+const MQTT_BROKER = "mqtt://broker.hivemq.com"; // ضع رابط الـ Broker الخاص بك هنا
+const mqttClient = mqtt.connect(MQTT_BROKER);
+
+mqttClient.on('connect', () => {
+    console.log('Connected to MQTT Broker successfully!');
 });
 
-// إنشاء خادم WebSocket متصل بخادم HTTP
-const wss = new WebSocketServer({ server });
+// المسار لاستقبال طلب الـ POST ونشره للـ ESP32
+app.post('/publish', (req, res) => {
+    let topic = "dev/emergency/225"; // القيمة الافتراضية للعنوان
+    let message = "ON"; // الرسالة الافتراضية (مثلاً لتشغيل التنبيه)
 
-let esp32Client = null;
+    // إذا أرسلت البيانات كـ JSON من Postman
+    if (req.is('json')) {
+        topic = req.body.topic || topic;
+        message = req.body.message || message;
+    } else if (typeof req.body === 'string' && req.body.trim() !== "") {
+        // إذا أرسلت العنوان فقط كنص مجرد في الـ Body مثل صورتك السابقة
+        topic = req.body.trim();
+    }
 
-wss.on('connection', (ws) => {
-    console.log('تم اتصال جهاز ESP32 بنجاح!');
-    esp32Client = ws; // تخزين مسار الاتصال الخاص باللوحة
-
-    ws.on('close', () => {
-        console.log('انقطع الاتصال مع ESP32');
-        esp32Client = null;
+    // نشر الرسالة عبر MQTT إلى الـ ESP32
+    mqttClient.publish(topic, message, (err) => {
+        if (err) {
+            console.error(`Failed to publish to ${topic}:`, err);
+            return res.status(500).send("Failed to send message to ESP32");
+        }
+        
+        console.log(`Published successfully to [${topic}] with message: "${message}"`);
+        res.status(200).send(`Message sent to ESP32 via topic: ${topic}`);
     });
 });
 
-// واجهة برمجية (API) لتشغيل الريليه
-app.get('/turn-on', (req, res) => {
-    if (esp32Client) {
-        esp32Client.send('RELAY_ON'); // إرسال رسالة التشغيل
-        res.send('تم إرسال أمر التشغيل إلى ESP32 (الريليه يعمل)');
-    } else {
-        res.status(404).send('لوحة ESP32 غير متصلة بالخادم حالياً.');
-    }
-});
-
-// واجهة برمجية (API) لإيقاف الريليه
-app.get('/turn-off', (req, res) => {
-    if (esp32Client) {
-        esp32Client.send('RELAY_OFF'); // إرسال رسالة الإيقاف
-        res.send('تم إرسال أمر الإيقاف إلى ESP32 (الريليه متوقف)');
-    } else {
-        res.status(404).send('لوحة ESP32 غير متصلة بالخادم حالياً.');
-    }
-});
-
-// رسالة ترحيبية للصفحة الرئيسية
-app.get('/', (req, res) => {
-    res.send('خادم نظام الطوارئ يعمل بنجاح!');
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
