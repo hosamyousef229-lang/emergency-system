@@ -1,12 +1,11 @@
 const express = require('express');
-const mqtt = require('mqtt'); // تأكد من استيراد مكتبة MQTT
+const mqtt = require('mqtt');
 const app = express();
 
-app.use(express.json());
-// لدعم قراءة النصوص العادية إذا كنت ترسل العنوان فقط من بوستمان
+// تفعيل قراءة النصوص العادية (Plain Text) من الطلبات
 app.use(express.text({ type: '*/*' })); 
 
-// إعداد الاتصال بـ MQTT Broker (مثل HiveMQ أو Shiftr.io أو Mosquitto)
+// إعداد الاتصال بـ MQTT Broker
 const MQTT_BROKER = "mqtt://broker.hivemq.com"; // ضع رابط الـ Broker الخاص بك هنا
 const mqttClient = mqtt.connect(MQTT_BROKER);
 
@@ -14,21 +13,19 @@ mqttClient.on('connect', () => {
     console.log('Connected to MQTT Broker successfully!');
 });
 
-// المسار لاستقبال طلب الـ POST ونشره للـ ESP32
+// المسار لاستقبال النص ونشره
 app.post('/publish', (req, res) => {
-    let topic = "dev/emergency/225"; // القيمة الافتراضية للعنوان
-    let message = "ON"; // الرسالة الافتراضية (مثلاً لتشغيل التنبيه)
+    // قراءة النص المرسل في الـ Body
+    const topic = req.body ? req.body.trim() : "";
 
-    // إذا أرسلت البيانات كـ JSON من Postman
-    if (req.is('json')) {
-        topic = req.body.topic || topic;
-        message = req.body.message || message;
-    } else if (typeof req.body === 'string' && req.body.trim() !== "") {
-        // إذا أرسلت العنوان فقط كنص مجرد في الـ Body مثل صورتك السابقة
-        topic = req.body.trim();
+    // التحقق من أن النص ليس فارغاً
+    if (!topic) {
+        return res.status(400).send("Error: Body is empty. Please send a valid topic text.");
     }
 
-    // نشر الرسالة عبر MQTT إلى الـ ESP32
+    const message = "ON"; // الرسالة الافتراضية المرسلة للـ ESP32
+
+    // نشر العنوان المستلم عبر الـ MQTT إلى الـ ESP32
     mqttClient.publish(topic, message, (err) => {
         if (err) {
             console.error(`Failed to publish to ${topic}:`, err);
@@ -36,7 +33,9 @@ app.post('/publish', (req, res) => {
         }
         
         console.log(`Published successfully to [${topic}] with message: "${message}"`);
-        res.status(200).send(`Message sent to ESP32 via topic: ${topic}`);
+        
+        // إرجاع رد نصي لـ Postman
+        res.status(200).send(`Success: Published "ON" to topic [${topic}]`);
     });
 });
 
