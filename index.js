@@ -4,7 +4,8 @@ const mqtt = require('mqtt');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// السماح بقراءة النص الخام (Text) القادم من Postman
+// دعم قراءة البيانات بصيغة JSON والصيغة النصية الخام (Text)
+app.use(express.json()); 
 app.use(express.text()); 
 
 // الاتصال بسيرفر MQTT
@@ -14,26 +15,39 @@ mqttClient.on('connect', () => {
     console.log('Connected to HiveMQ Broker successfully!');
 });
 
-// المسار الذي يستقبل الطلبات
-app.post('/trigger-alarm', (req, res) => {
-    const stationNumber = req.body.trim(); 
+/**
+ * المسار الجديد يستقبل الـ Topic كجزء من الرابط
+ * رمز (*) يسمح باستقبال مسار كامل يحتوي على علامات "/" مثل: dev/emergency/225
+ */
+app.post('/trigger-alarm/:topic(*)', (req, res) => {
+    const topic = req.params.topic; // سيحتوي على dev/emergency/225
+    let payload;
 
-    console.log(`Received command for station: ${stationNumber}`);
-
-    if (!stationNumber || isNaN(stationNumber)) {
-        return res.status(400).send("Error: Please send a valid number.");
+    // تحضير البيانات المرسلة (Payload)
+    if (typeof req.body === 'object') {
+        payload = JSON.stringify(req.body); 
+    } else {
+        payload = req.body ? req.body.trim() : '';
     }
 
-    const topic = 'emergency/alert'; 
+    console.log(`Sending to Topic: [${topic}] | Message: ${payload}`);
 
-    // إرسال الرقم للـ ESP32
-    mqttClient.publish(topic, stationNumber, (err) => {
+    // التحقق من وجود الـ Topic والبيانات
+    if (!topic) {
+        return res.status(400).send("Error: Topic is required in the URL.");
+    }
+    if (!payload) {
+        return res.status(400).send("Error: Request body cannot be empty.");
+    }
+
+    // إرسال الرسالة إلى الـ Topic الديناميكي المستخرج من الرابط
+    mqttClient.publish(topic, payload, (err) => {
         if (err) {
             console.error('MQTT error:', err);
             return res.status(500).send("Server Error.");
         }
         
-        res.status(200).send(`Success: Command sent to station ${stationNumber}`);
+        res.status(200).send(`Success: Sent message to topic [${topic}]`);
     });
 });
 
